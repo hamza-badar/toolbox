@@ -1,103 +1,68 @@
-import Image from "next/image";
+import { ShieldCheck, Zap, WifiOff } from "lucide-react";
+import { categories, toolsByCategory } from "@/lib/tools";
+import { ToolCard } from "@/components/shared/tool-card";
 
-export default function Home() {
+const perks = [
+  { icon: ShieldCheck, label: "100% private", note: "Files never leave your device" },
+  { icon: Zap, label: "Fast & free", note: "No sign-up, no limits, no watermarks" },
+  { icon: WifiOff, label: "Works offline", note: "All processing runs in your browser" },
+];
+
+export default function HomePage() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div>
+      {/* Hero */}
+      <section className="aurora relative overflow-hidden border-b border-border">
+        <div className="mx-auto max-w-6xl px-4 py-16 text-center sm:px-6 sm:py-24">
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
+            <span className="size-1.5 rounded-full bg-success" />
+            Client-side only — nothing is uploaded
+          </span>
+          <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+            Free media tools that{" "}
+            <span className="text-accent">respect your privacy</span>.
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-balance text-lg text-muted-foreground">
+            Compress PDFs, edit images, and convert video to GIF — all processed right here in
+            your browser. No uploads, no accounts, no cost.
+          </p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-3">
+            {perks.map((p) => (
+              <div
+                key={p.label}
+                className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card/60 p-4 backdrop-blur"
+              >
+                <p.icon className="size-5 text-accent" />
+                <span className="text-sm font-semibold">{p.label}</span>
+                <span className="text-xs text-muted-foreground">{p.note}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </section>
+
+      {/* Tool grid, grouped by category */}
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        {categories.map((category) => {
+          const list = toolsByCategory(category);
+          return (
+            <div key={category} className="mb-14 last:mb-0">
+              <div className="mb-5 flex items-baseline justify-between">
+                <h2 className="text-xl font-semibold tracking-tight">{category}</h2>
+                <span className="text-sm text-muted-foreground">
+                  {list.length} tool{list.length > 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {list.map((tool, i) => (
+                  <ToolCard key={tool.slug} slug={tool.slug} index={i} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </section>
     </div>
   );
 }
