@@ -275,9 +275,11 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
           </Button>
         </div>
 
-        <div className="grid flex-1 gap-5 overflow-y-auto scroll-thin p-5 md:grid-cols-[1fr_240px]">
-          {/* Crop area — sized to the image's own aspect ratio */}
-          <div className="flex items-center justify-center p-3">
+        <div className="flex flex-1 flex-col overflow-hidden md:grid md:grid-cols-[1fr_240px] md:gap-5 md:overflow-y-auto md:p-5 md:scroll-thin">
+          {/* Crop area — sized to the image's own aspect ratio. Pinned in
+              place on mobile (not part of the scroll) so it stays visible
+              while you scroll the controls panel below to tweak a setting. */}
+          <div className="flex shrink-0 items-center justify-center p-3">
             {displayUrl && stageSize.w > 0 && (
               <div
                 ref={stageRef}
@@ -359,8 +361,9 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
             )}
           </div>
 
-          {/* Controls */}
-          <div className="flex flex-col gap-4">
+          {/* Controls — scrolls independently on mobile so the pinned
+              preview above never has to be scrolled past to reach them. */}
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto scroll-thin p-5 pt-0 md:flex-none md:overflow-visible md:p-0">
             <div>
               <Label className="mb-2 block">Crop ratio</Label>
               <div className="flex flex-wrap gap-1.5">
