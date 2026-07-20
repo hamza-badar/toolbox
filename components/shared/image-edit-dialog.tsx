@@ -4,7 +4,6 @@ import * as React from "react";
 import { RotateCw, RotateCcw, FlipHorizontal, FlipVertical, Check, X, Maximize } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import {
   loadImageFromBlob,
@@ -41,6 +40,18 @@ const FULL_CORNERS: Point[] = [
   [1, 1],
   [0, 1],
 ];
+
+const COLOR_PRESETS: { mode: ColorMode; label: string }[] = [
+  { mode: "original", label: "Original" },
+  { mode: "color", label: "Colour" },
+  { mode: "bw", label: "B&W" },
+  { mode: "grayscale", label: "Greyscale" },
+  { mode: "save-ink", label: "Save ink" },
+];
+
+/** Diameter (px) of the magnifier loupe shown while dragging a corner handle. */
+const MAGNIFIER_SIZE = 120;
+const MAGNIFIER_ZOOM = 2.75;
 
 const ASPECT_PRESETS: { label: string; ratio: number | null }[] = [
   { label: "Free", ratio: null },
@@ -99,6 +110,7 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
   const stageRef = React.useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = React.useState({ w: 0, h: 0 });
   const dragIndex = React.useRef<number | null>(null);
+  const [draggingIndex, setDraggingIndex] = React.useState<number | null>(null);
 
   // Load the source image once.
   React.useEffect(() => {
@@ -178,6 +190,7 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
   function startDrag(i: number, e: React.PointerEvent) {
     e.preventDefault();
     dragIndex.current = i;
+    setDraggingIndex(i);
     setAspectLabel("Free"); // any manual drag breaks a locked ratio
     const move = (ev: PointerEvent) => {
       if (dragIndex.current === null) return;
@@ -190,6 +203,7 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
     };
     const up = () => {
       dragIndex.current = null;
+      setDraggingIndex(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -217,6 +231,28 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
     .join(" ");
   // Outer rect minus the crop quad, used to dim everything outside the selection.
   const maskId = React.useId();
+
+  // Magnifier loupe: zooms in on the corner being dragged so the fingertip
+  // (which covers the actual point on touch devices) doesn't block the view.
+  // Positioned in the quadrant opposite the point so it never sits under it.
+  let magnifier: { left: number; top: number; bgX: number; bgY: number } | null = null;
+  if (draggingIndex !== null && stageSize.w > 0 && stageSize.h > 0) {
+    const [nx, ny] = corners[draggingIndex];
+    const px = nx * stageSize.w;
+    const py = ny * stageSize.h;
+    const clear = MAGNIFIER_SIZE / 2 + 24;
+    const rawLeft = px + (nx < 0.5 ? clear : -clear);
+    const rawTop = py + (ny < 0.5 ? clear : -clear);
+    const half = MAGNIFIER_SIZE / 2;
+    const left = Math.max(half, Math.min(stageSize.w - half, rawLeft));
+    const top = Math.max(half, Math.min(stageSize.h - half, rawTop));
+    magnifier = {
+      left,
+      top,
+      bgX: -(px * MAGNIFIER_ZOOM - half),
+      bgY: -(py * MAGNIFIER_ZOOM - half),
+    };
+  }
 
   return (
     <div
@@ -297,6 +333,28 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
                     style={{ left: x * stageSize.w, top: y * stageSize.h }}
                   />
                 ))}
+
+                {/* Zoomed loupe preview of the corner currently being dragged. */}
+                {magnifier && displayUrl && (
+                  <div
+                    className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white shadow-lg"
+                    style={{
+                      left: magnifier.left,
+                      top: magnifier.top,
+                      width: MAGNIFIER_SIZE,
+                      height: MAGNIFIER_SIZE,
+                      backgroundImage: `url(${displayUrl})`,
+                      backgroundRepeat: "no-repeat",
+                      backgroundSize: `${stageSize.w * MAGNIFIER_ZOOM}px ${stageSize.h * MAGNIFIER_ZOOM}px`,
+                      backgroundPosition: `${magnifier.bgX}px ${magnifier.bgY}px`,
+                      filter,
+                    }}
+                  >
+                    {/* Crosshair marking the exact point, since the finger/cursor hides it on the stage itself. */}
+                    <div className="absolute left-1/2 top-1/2 h-4 w-px -translate-x-1/2 -translate-y-1/2 bg-accent" />
+                    <div className="absolute left-1/2 top-1/2 h-px w-4 -translate-x-1/2 -translate-y-1/2 bg-accent" />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -351,11 +409,38 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
 
             <div>
               <Label className="mb-1.5 block">Color</Label>
-              <Select value={colorMode} onChange={(e) => setColorMode(e.target.value as ColorMode)}>
-                <option value="original">Original (color)</option>
-                <option value="grayscale">Grayscale</option>
-                <option value="bw">Black &amp; White</option>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                {COLOR_PRESETS.map((preset) => (
+                  <button
+                    key={preset.mode}
+                    type="button"
+                    onClick={() => setColorMode(preset.mode)}
+                    className={`flex w-14 flex-col items-center gap-1 rounded-md p-1 text-[11px] transition-colors ${
+                      colorMode === preset.mode
+                        ? "bg-accent/10 text-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    <span
+                      className={`flex size-12 items-center justify-center overflow-hidden rounded-md border-2 bg-muted ${
+                        colorMode === preset.mode ? "border-accent" : "border-transparent"
+                      }`}
+                    >
+                      {displayUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={displayUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          style={{ filter: buildColorFilter(preset.mode, NEUTRAL_ADJUSTMENTS) }}
+                          draggable={false}
+                        />
+                      ) : null}
+                    </span>
+                    <span className="text-center leading-tight">{preset.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -366,7 +451,7 @@ export function ImageEditDialog({ file, initialEdits, onApply, onClose }: Props)
                     value={adjustments[k]}
                     min={0}
                     max={200}
-                    disabled={k === "saturation" && colorMode !== "original"}
+                    disabled={k === "saturation" && colorMode !== "original" && colorMode !== "color"}
                     onChange={(v) => setAdjustments((a) => ({ ...a, [k]: v }))}
                   />
                   <span className="w-8 text-right font-mono text-xs">{adjustments[k]}</span>

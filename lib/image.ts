@@ -140,7 +140,7 @@ export function adjustmentsToFilter(a: Adjustments): string {
   return `brightness(${a.brightness}%) contrast(${a.contrast}%) saturate(${a.saturation}%)`;
 }
 
-export type ColorMode = "original" | "grayscale" | "bw";
+export type ColorMode = "original" | "color" | "grayscale" | "bw" | "save-ink";
 
 /**
  * Build a CSS/canvas filter string for a color mode plus adjustments. The same
@@ -148,8 +148,10 @@ export type ColorMode = "original" | "grayscale" | "bw";
  */
 export function buildColorFilter(mode: ColorMode, a: Adjustments): string {
   const base = adjustmentsToFilter(a);
+  if (mode === "color") return `contrast(112%) saturate(118%) ${base}`;
   if (mode === "grayscale") return `grayscale(1) ${base}`;
   if (mode === "bw") return `grayscale(1) contrast(320%) ${base}`;
+  if (mode === "save-ink") return `grayscale(1) brightness(145%) contrast(85%) ${base}`;
   return base;
 }
 
