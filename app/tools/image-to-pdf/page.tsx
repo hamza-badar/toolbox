@@ -243,6 +243,7 @@ export default function ImageToPdfPage() {
         <Dropzone
           accept="image/*"
           multiple
+          enableCamera
           onFiles={addFiles}
           title={items.length ? "Add more images" : "Drop images to combine into a PDF"}
           hint="JPEG, PNG, WebP · drag to reorder after adding"

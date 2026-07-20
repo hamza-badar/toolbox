@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { UploadCloud, AlertCircle } from "lucide-react";
+import { UploadCloud, Camera, AlertCircle } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 
 interface DropzoneProps {
@@ -18,6 +18,14 @@ interface DropzoneProps {
   hint?: string;
   disabled?: boolean;
   className?: string;
+  /**
+   * Show a dedicated "Take Photo" button that opens the camera directly.
+   * On Android Chrome, accept="image/*" opens the OS photo picker, which
+   * has no camera entry — a separate `capture` input is the only reliable
+   * way to expose the camera there. Safari/other browsers already surface
+   * a camera option in their native chooser, so this is just an extra path.
+   */
+  enableCamera?: boolean;
 }
 
 function matchesAccept(file: File, accept?: string): boolean {
@@ -43,8 +51,10 @@ export function Dropzone({
   hint,
   disabled,
   className,
+  enableCamera = false,
 }: DropzoneProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const cameraInputRef = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [warning, setWarning] = React.useState<string | null>(null);
@@ -148,6 +158,32 @@ export function Dropzone({
           }}
         />
       </motion.button>
+
+      {enableCamera && (
+        <>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => cameraInputRef.current?.click()}
+            className="mt-3 flex items-center gap-1.5 text-sm text-accent hover:underline disabled:pointer-events-none disabled:opacity-50"
+          >
+            <Camera className="size-4" />
+            Take a photo
+          </button>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept={accept}
+            capture="environment"
+            disabled={disabled}
+            className="hidden"
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </>
+      )}
 
       {error && (
         <p className="mt-3 flex items-start gap-2 text-sm text-destructive">
