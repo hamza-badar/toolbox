@@ -29,14 +29,18 @@ export function ProgressBar({ value, status, className }: ProgressBarProps) {
       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
         {indeterminate ? (
           <motion.div
+            key="indeterminate"
             className="h-full w-1/3 rounded-full bg-accent"
+            initial={{ x: "-100%" }}
             animate={{ x: ["-100%", "300%"] }}
             transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
           />
         ) : (
           <motion.div
+            key="determinate"
             className="h-full rounded-full bg-accent"
-            animate={{ width: `${pct}%` }}
+            initial={{ x: 0, width: 0 }}
+            animate={{ x: 0, width: `${pct}%` }}
             transition={{ ease: "easeOut", duration: 0.3 }}
           />
         )}
