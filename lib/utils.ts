@@ -16,7 +16,14 @@ export function formatBytes(bytes: number, decimals = 1): string {
 
 /** Trigger a browser download for a Blob. */
 export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
+  // Safari (iOS/iPadOS) ignores the `download` attribute for MIME types it can
+  // render inline (PDF, images, etc.) and opens them in its own viewer instead
+  // of downloading. Re-tagging the blob as a generic binary type sidesteps
+  // that inline viewer on every browser; the real extension in `filename`
+  // still determines how the saved file is treated afterwards.
+  const downloadBlob =
+    blob.type === "application/octet-stream" ? blob : new Blob([blob], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(downloadBlob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
