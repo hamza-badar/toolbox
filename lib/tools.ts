@@ -9,6 +9,7 @@ import {
   Repeat,
   Film,
   Video,
+  ImageDown,
   Clapperboard,
   AudioLines,
   ScanText,
@@ -102,6 +103,14 @@ export const tools: Tool[] = [
     description: "Extract every frame of a GIF as PNG, JPEG or WebP.",
     category: "Video/GIF",
     icon: Images,
+    heavy: true,
+  },
+  {
+    slug: "video-to-image",
+    name: "Video → Images",
+    description: "Extract every frame of a video as PNG, JPEG or WebP in a ZIP.",
+    category: "Video/GIF",
+    icon: ImageDown,
     heavy: true,
   },
   {
