@@ -163,3 +163,88 @@ export async function compressPdfToTarget(
 
   return bestResult!;
 }
+
+/**
+ * Parse a page selection like "1-3, 5, 6" into 1-based page numbers.
+ * Empty input means every page. Ranges may be written either way (3-1).
+ * Invalid tokens are skipped; duplicates keep first-seen order.
+ */
+export function parsePageSelection(input: string, pageCount: number): number[] {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return Array.from({ length: pageCount }, (_, i) => i + 1);
+  }
+
+  const seen = new Set<number>();
+  const out: number[] = [];
+
+  for (const raw of trimmed.split(",")) {
+    const chunk = raw.trim();
+    if (!chunk) continue;
+
+    const range = chunk.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      let a = parseInt(range[1], 10);
+      let b = parseInt(range[2], 10);
+      if (a > b) [a, b] = [b, a];
+      a = Math.max(1, a);
+      b = Math.min(pageCount, b);
+      for (let i = a; i <= b; i++) {
+        if (!seen.has(i)) {
+          seen.add(i);
+          out.push(i);
+        }
+      }
+      continue;
+    }
+
+    const n = parseInt(chunk, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= pageCount && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+
+  return out;
+}
+
+/** Safe canvas edge length across Chromium / Safari / Firefox. */
+export const MAX_CANVAS_EDGE = 16384;
+
+/**
+ * Stack page canvases top-to-bottom into one image, scaling each to a shared
+ * width. Shrinks the whole strip if it would exceed the browser canvas cap.
+ */
+export function stitchCanvasesVertically(
+  canvases: HTMLCanvasElement[],
+  maxEdge = MAX_CANVAS_EDGE
+): HTMLCanvasElement {
+  if (!canvases.length) throw new Error("No pages to stitch.");
+  if (canvases.length === 1) return canvases[0];
+
+  const maxW = Math.max(...canvases.map((c) => c.width), 1);
+  const scaledHeights = canvases.map((c) =>
+    c.width === 0 ? 0 : (c.height * maxW) / c.width
+  );
+  const totalH = scaledHeights.reduce((a, b) => a + b, 0) || 1;
+
+  const fit = Math.min(1, maxEdge / maxW, maxEdge / totalH);
+  const outW = Math.max(1, Math.round(maxW * fit));
+  const outH = Math.max(1, Math.round(totalH * fit));
+
+  const out = document.createElement("canvas");
+  out.width = outW;
+  out.height = outH;
+  const ctx = out.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, outW, outH);
+  ctx.imageSmoothingQuality = "high";
+
+  let y = 0;
+  for (let i = 0; i < canvases.length; i++) {
+    const dh = Math.max(1, Math.round(scaledHeights[i] * fit));
+    ctx.drawImage(canvases[i], 0, y, outW, dh);
+    y += dh;
+  }
+  return out;
+}

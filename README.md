@@ -7,7 +7,7 @@ Vercel's free Hobby tier with zero server cost.
 ## Tools
 
 **PDF** — Compress (rasterize to target size), Organize (merge / split / reorder / rotate),
-Images → PDF.
+Images → PDF, PDF → Images (page ranges, optional long-strip stitch, target size).
 **Image** — Editor (crop, resize, rotate, adjust, ID-photo presets), Compressor (target KB),
 Converter (PNG/JPEG/WebP/AVIF, batch).
 **Video / GIF** — Video → GIF (two-pass palette), GIF → Video (MP4/WebM), GIF → Images,

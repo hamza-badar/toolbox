@@ -465,11 +465,13 @@ export function flipImageToCanvas(
 }
 
 /**
- * Compress an image toward a target byte size via binary search on JPEG/WebP
+ * Compress a bitmap toward a target byte size via binary search on JPEG/WebP
  * quality, then downscaling if the quality floor still overshoots.
  */
-export async function compressToTargetBytes(
-  img: HTMLImageElement,
+async function compressSourceToTargetBytes(
+  source: CanvasImageSource,
+  srcW: number,
+  srcH: number,
   targetBytes: number,
   format: Extract<ImageFormat, "jpeg" | "webp">,
   opts: { minQuality?: number; onProgress?: (info: string) => void } = {}
@@ -477,9 +479,9 @@ export async function compressToTargetBytes(
   const minQuality = opts.minQuality ?? 0.3;
   let scale = 1;
 
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const w = Math.max(16, Math.round(img.naturalWidth * scale));
-    const h = Math.max(16, Math.round(img.naturalHeight * scale));
+  const drawAt = (scl: number) => {
+    const w = Math.max(16, Math.round(srcW * scl));
+    const h = Math.max(16, Math.round(srcH * scl));
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
@@ -489,7 +491,12 @@ export async function compressToTargetBytes(
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, w, h);
     }
-    ctx.drawImage(img, 0, 0, w, h);
+    ctx.drawImage(source, 0, 0, w, h);
+    return canvas;
+  };
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const canvas = drawAt(scale);
 
     // Binary search quality at this resolution.
     let lo = 0.05;
@@ -518,17 +525,27 @@ export async function compressToTargetBytes(
   }
 
   // Give back the smallest we can produce.
-  const w = Math.max(16, Math.round(img.naturalWidth * scale));
-  const h = Math.max(16, Math.round(img.naturalHeight * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  if (format === "jpeg") {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, w, h);
-  }
-  ctx.drawImage(img, 0, 0, w, h);
+  const canvas = drawAt(scale);
   const blob = await canvasToBlob(canvas, format, minQuality);
   return { blob, quality: minQuality, scale };
+}
+
+/** Compress an image toward a target byte size (JPEG/WebP). */
+export async function compressToTargetBytes(
+  img: HTMLImageElement,
+  targetBytes: number,
+  format: Extract<ImageFormat, "jpeg" | "webp">,
+  opts: { minQuality?: number; onProgress?: (info: string) => void } = {}
+): Promise<{ blob: Blob; quality: number; scale: number }> {
+  return compressSourceToTargetBytes(img, img.naturalWidth, img.naturalHeight, targetBytes, format, opts);
+}
+
+/** Compress a canvas toward a target byte size (JPEG/WebP). */
+export async function compressCanvasToTargetBytes(
+  canvas: HTMLCanvasElement,
+  targetBytes: number,
+  format: Extract<ImageFormat, "jpeg" | "webp">,
+  opts: { minQuality?: number; onProgress?: (info: string) => void } = {}
+): Promise<{ blob: Blob; quality: number; scale: number }> {
+  return compressSourceToTargetBytes(canvas, canvas.width, canvas.height, targetBytes, format, opts);
 }

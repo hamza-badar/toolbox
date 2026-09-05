@@ -3,6 +3,7 @@ import {
   FileText,
   FileStack,
   FileImage,
+  GalleryVertical,
   Images,
   Crop,
   Minimize2,
@@ -49,6 +50,13 @@ export const tools: Tool[] = [
     description: "Combine images into a single PDF with page & margin options.",
     category: "PDF",
     icon: FileImage,
+  },
+  {
+    slug: "pdf-to-image",
+    name: "PDF → Images",
+    description: "Export PDF pages as images, pick ranges, or stitch them into one long strip.",
+    category: "PDF",
+    icon: GalleryVertical,
   },
   {
     slug: "ocr",
