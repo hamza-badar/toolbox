@@ -29,6 +29,10 @@ import {
   NEUTRAL_ADJUSTMENTS,
   LOSSY_FORMATS,
   FORMAT_MIME,
+  DEFAULT_DPI,
+  LENGTH_UNIT_LABELS,
+  lengthToPx,
+  pxToLength,
   loadImageFromBlob,
   renderToCanvas,
   canvasToBlob,
@@ -39,6 +43,7 @@ import {
   type Adjustments,
   type ImageFormat,
   type DimensionPreset,
+  type LengthUnit,
 } from "@/lib/image";
 import { zipBlobs } from "@/lib/zip";
 import { FilenameField, buildFilename, sanitizeBaseName } from "@/components/shared/filename-field";
@@ -90,6 +95,8 @@ export default function ImageEditorPage() {
   const [resizeEnabled, setResizeEnabled] = React.useState(false);
   const [outWidth, setOutWidth] = React.useState(0);
   const [outHeight, setOutHeight] = React.useState(0);
+  const [sizeUnit, setSizeUnit] = React.useState<LengthUnit>("px");
+  const [dpi, setDpi] = React.useState(DEFAULT_DPI);
   const [lockAspect, setLockAspect] = React.useState(true);
   const [fit, setFit] = React.useState<"cover" | "contain" | "stretch">("cover");
   const [background, setBackground] = React.useState("#ffffff");
@@ -182,6 +189,8 @@ export default function ImageEditorPage() {
         setAdjustments(NEUTRAL_ADJUSTMENTS);
         setResizeEnabled(false);
         setPresetKey("");
+        setSizeUnit("px");
+        setDpi(DEFAULT_DPI);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load images.");
       }
@@ -189,23 +198,48 @@ export default function ImageEditorPage() {
     []
   );
 
+  function roundForUnit(value: number, unit: LengthUnit): number {
+    if (unit === "px" || unit === "mm") return Math.round(value);
+    return Math.round(value * 100) / 100;
+  }
+
+  function getTargetDimensionsPx() {
+    return {
+      width: lengthToPx(outWidth, sizeUnit, dpi),
+      height: lengthToPx(outHeight, sizeUnit, dpi),
+    };
+  }
+
   function applyPreset(key: string) {
     setPresetKey(key);
-    if (!key) return;
+    if (!key) {
+      setResizeEnabled(true);
+      return;
+    }
     const preset = DIMENSION_PRESETS.find((p) => `${p.group}:${p.label}` === key);
     if (!preset) return;
     setResizeEnabled(true);
+    setSizeUnit("px");
     setOutWidth(preset.width);
     setOutHeight(preset.height);
     setFit("contain");
     if (preset.background) setBackground(preset.background);
   }
 
+  function changeSizeUnit(unit: LengthUnit) {
+    if (unit === sizeUnit) return;
+    const { width: pxW, height: pxH } = getTargetDimensionsPx();
+    setSizeUnit(unit);
+    setOutWidth(pxToLength(pxW, unit, dpi));
+    setOutHeight(pxToLength(pxH, unit, dpi));
+    setPresetKey("");
+  }
+
   function updateWidth(w: number) {
     setOutWidth(w);
     if (lockAspect && active) {
       const ratio = active.img.naturalHeight / active.img.naturalWidth;
-      setOutHeight(Math.round(w * ratio));
+      setOutHeight(roundForUnit(w * ratio, sizeUnit));
     }
     setPresetKey("");
   }
@@ -213,12 +247,13 @@ export default function ImageEditorPage() {
     setOutHeight(h);
     if (lockAspect && active) {
       const ratio = active.img.naturalWidth / active.img.naturalHeight;
-      setOutWidth(Math.round(h * ratio));
+      setOutWidth(roundForUnit(h * ratio, sizeUnit));
     }
     setPresetKey("");
   }
 
   function buildRenderOptions(item: QueueItem, useCrop: boolean) {
+    const target = resizeEnabled ? getTargetDimensionsPx() : null;
     const cropRect =
       useCrop && croppedArea
         ? {
@@ -234,8 +269,8 @@ export default function ImageEditorPage() {
       flipH,
       flipV,
       adjustments,
-      targetWidth: resizeEnabled ? outWidth : undefined,
-      targetHeight: resizeEnabled ? outHeight : undefined,
+      targetWidth: target?.width,
+      targetHeight: target?.height,
       fit,
       background: fit === "contain" || format === "jpeg" ? background : undefined,
     };
@@ -258,7 +293,8 @@ export default function ImageEditorPage() {
       let canvas = getCroppedCanvas(displayImg, area, rotate, adjustmentsToFilter(adjustments));
       const bg = fit === "contain" || format === "jpeg" ? background : undefined;
       if (resizeEnabled) {
-        canvas = fitCanvasToTarget(canvas, outWidth, outHeight, fit, bg);
+        const { width: targetW, height: targetH } = getTargetDimensionsPx();
+        canvas = fitCanvasToTarget(canvas, targetW, targetH, fit, bg);
       } else if (format === "jpeg") {
         // JPEG has no alpha — flatten onto the background.
         canvas = fitCanvasToTarget(canvas, canvas.width, canvas.height, "stretch", bg);
@@ -325,6 +361,8 @@ export default function ImageEditorPage() {
     setError(null);
     setCroppedArea(null);
   }
+
+  const targetPx = resizeEnabled ? getTargetDimensionsPx() : null;
 
   return (
     <ToolShell tool={tool}>
@@ -468,26 +506,63 @@ export default function ImageEditorPage() {
 
               {resizeEnabled && (
                 <>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <Label className="mb-1 block text-xs text-muted-foreground">Width (px)</Label>
+                  <div>
+                    <Label className="mb-1 block text-xs text-muted-foreground">Unit</Label>
+                    <Select
+                      value={sizeUnit}
+                      onChange={(e) => changeSizeUnit(e.target.value as LengthUnit)}
+                    >
+                      {(Object.keys(LENGTH_UNIT_LABELS) as LengthUnit[]).map((unit) => (
+                        <option key={unit} value={unit}>
+                          {LENGTH_UNIT_LABELS[unit]}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  {sizeUnit !== "px" && (
+                    <div>
+                      <Label className="mb-1 block text-xs text-muted-foreground">DPI</Label>
                       <Input
                         type="number"
-                        min={1}
+                        min={72}
+                        max={600}
+                        step={1}
+                        value={dpi}
+                        onChange={(e) => setDpi(Math.max(72, Math.min(600, Number(e.target.value) || DEFAULT_DPI)))}
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Label className="mb-1 block text-xs text-muted-foreground">
+                        Width ({sizeUnit})
+                      </Label>
+                      <Input
+                        type="number"
+                        min={sizeUnit === "px" || sizeUnit === "mm" ? 1 : 0.01}
+                        step={sizeUnit === "px" || sizeUnit === "mm" ? 1 : 0.01}
                         value={outWidth}
                         onChange={(e) => updateWidth(Number(e.target.value))}
                       />
                     </div>
                     <div className="flex-1">
-                      <Label className="mb-1 block text-xs text-muted-foreground">Height (px)</Label>
+                      <Label className="mb-1 block text-xs text-muted-foreground">
+                        Height ({sizeUnit})
+                      </Label>
                       <Input
                         type="number"
-                        min={1}
+                        min={sizeUnit === "px" || sizeUnit === "mm" ? 1 : 0.01}
+                        step={sizeUnit === "px" || sizeUnit === "mm" ? 1 : 0.01}
                         value={outHeight}
                         onChange={(e) => updateHeight(Number(e.target.value))}
                       />
                     </div>
                   </div>
+                  {sizeUnit !== "px" && targetPx && (
+                    <p className="text-xs text-muted-foreground">
+                      ≈ {targetPx.width}×{targetPx.height} px at {dpi} DPI
+                    </p>
+                  )}
                   <label className="flex items-center gap-2 text-sm">
                     <Switch checked={lockAspect} onCheckedChange={setLockAspect} />
                     Maintain aspect ratio

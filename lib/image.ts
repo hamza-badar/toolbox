@@ -70,9 +70,48 @@ export const DIMENSION_PRESETS: DimensionPreset[] = [
   { group: "Social", label: "Twitter/X Image (1600×900)", width: 1600, height: 900 },
 ];
 
+export type LengthUnit = "px" | "mm" | "cm" | "in";
+
+export const LENGTH_UNIT_LABELS: Record<LengthUnit, string> = {
+  px: "Pixels (px)",
+  mm: "Millimeters (mm)",
+  cm: "Centimeters (cm)",
+  in: "Inches (in)",
+};
+
+export const DEFAULT_DPI = 300;
+
+/** Convert a length in the given unit to pixels at the specified DPI. */
+export function lengthToPx(value: number, unit: LengthUnit, dpi = DEFAULT_DPI): number {
+  switch (unit) {
+    case "px":
+      return Math.round(value);
+    case "mm":
+      return Math.round((value / 25.4) * dpi);
+    case "cm":
+      return Math.round((value / 2.54) * dpi);
+    case "in":
+      return Math.round(value * dpi);
+  }
+}
+
+/** Convert pixels to a length in the given unit at the specified DPI. */
+export function pxToLength(px: number, unit: LengthUnit, dpi = DEFAULT_DPI): number {
+  switch (unit) {
+    case "px":
+      return Math.round(px);
+    case "mm":
+      return Math.round(((px * 25.4) / dpi) * 10) / 10;
+    case "cm":
+      return Math.round(((px * 2.54) / dpi) * 100) / 100;
+    case "in":
+      return Math.round((px / dpi) * 100) / 100;
+  }
+}
+
 /** Convert millimetres to pixels at a given DPI. */
-export function mmToPx(mm: number, dpi = 300): number {
-  return Math.round((mm / 25.4) * dpi);
+export function mmToPx(mm: number, dpi = DEFAULT_DPI): number {
+  return lengthToPx(mm, "mm", dpi);
 }
 
 /** Load a File/Blob into an HTMLImageElement (via object URL). */
