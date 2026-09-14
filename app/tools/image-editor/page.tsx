@@ -62,6 +62,9 @@ interface QueueItem {
   img: HTMLImageElement;
 }
 
+const ORIGINAL_SIZE = "original";
+const CUSTOM_SIZE = "custom";
+
 const ASPECTS: { label: string; value: number | undefined }[] = [
   { label: "Free", value: undefined },
   { label: "1:1", value: 1 },
@@ -92,7 +95,6 @@ export default function ImageEditorPage() {
   const [adjustments, setAdjustments] = React.useState<Adjustments>(NEUTRAL_ADJUSTMENTS);
 
   // Output
-  const [resizeEnabled, setResizeEnabled] = React.useState(false);
   const [outWidth, setOutWidth] = React.useState(0);
   const [outHeight, setOutHeight] = React.useState(0);
   const [sizeUnit, setSizeUnit] = React.useState<LengthUnit>("px");
@@ -100,7 +102,7 @@ export default function ImageEditorPage() {
   const [lockAspect, setLockAspect] = React.useState(true);
   const [fit, setFit] = React.useState<"cover" | "contain" | "stretch">("cover");
   const [background, setBackground] = React.useState("#ffffff");
-  const [presetKey, setPresetKey] = React.useState("");
+  const [presetKey, setPresetKey] = React.useState(ORIGINAL_SIZE);
   const [format, setFormat] = React.useState<ImageFormat>("png");
   const [quality, setQuality] = React.useState(0.9);
   const [outName, setOutName] = React.useState("edited");
@@ -112,6 +114,7 @@ export default function ImageEditorPage() {
 
   const active = queue.find((q) => q.id === activeId) ?? null;
   const isBatch = queue.length > 1;
+  const resizeEnabled = presetKey !== ORIGINAL_SIZE;
 
   // The image the <Cropper> displays, with flips baked in so crop coordinates
   // stay correct. Adjustments are previewed live via CSS filter; rotation uses
@@ -187,8 +190,7 @@ export default function ImageEditorPage() {
         setFlipH(false);
         setFlipV(false);
         setAdjustments(NEUTRAL_ADJUSTMENTS);
-        setResizeEnabled(false);
-        setPresetKey("");
+        setPresetKey(ORIGINAL_SIZE);
         setSizeUnit("px");
         setDpi(DEFAULT_DPI);
       } catch (e) {
@@ -210,15 +212,21 @@ export default function ImageEditorPage() {
     };
   }
 
-  function applyPreset(key: string) {
+  function seedCustomDimensionsFromSource() {
+    if (!active) return;
+    setOutWidth(pxToLength(active.img.naturalWidth, sizeUnit, dpi));
+    setOutHeight(pxToLength(active.img.naturalHeight, sizeUnit, dpi));
+  }
+
+  function applySizeOption(key: string) {
     setPresetKey(key);
-    if (!key) {
-      setResizeEnabled(true);
+    if (key === ORIGINAL_SIZE) return;
+    if (key === CUSTOM_SIZE) {
+      seedCustomDimensionsFromSource();
       return;
     }
     const preset = DIMENSION_PRESETS.find((p) => `${p.group}:${p.label}` === key);
     if (!preset) return;
-    setResizeEnabled(true);
     setSizeUnit("px");
     setOutWidth(preset.width);
     setOutHeight(preset.height);
@@ -232,7 +240,7 @@ export default function ImageEditorPage() {
     setSizeUnit(unit);
     setOutWidth(pxToLength(pxW, unit, dpi));
     setOutHeight(pxToLength(pxH, unit, dpi));
-    setPresetKey("");
+    if (presetKey !== ORIGINAL_SIZE) setPresetKey(CUSTOM_SIZE);
   }
 
   function updateWidth(w: number) {
@@ -241,7 +249,7 @@ export default function ImageEditorPage() {
       const ratio = active.img.naturalHeight / active.img.naturalWidth;
       setOutHeight(roundForUnit(w * ratio, sizeUnit));
     }
-    setPresetKey("");
+    if (presetKey !== ORIGINAL_SIZE) setPresetKey(CUSTOM_SIZE);
   }
   function updateHeight(h: number) {
     setOutHeight(h);
@@ -249,7 +257,7 @@ export default function ImageEditorPage() {
       const ratio = active.img.naturalWidth / active.img.naturalHeight;
       setOutWidth(roundForUnit(h * ratio, sizeUnit));
     }
-    setPresetKey("");
+    if (presetKey !== ORIGINAL_SIZE) setPresetKey(CUSTOM_SIZE);
   }
 
   function buildRenderOptions(item: QueueItem, useCrop: boolean) {
@@ -423,7 +431,7 @@ export default function ImageEditorPage() {
           </div>
 
           {/* Controls */}
-          <div className="flex flex-col gap-5">
+          <div className="flex max-h-[min(80vh,720px)] flex-col gap-5 overflow-y-auto scroll-thin pr-1">
             {/* Aspect */}
             <section>
               <Label className="mb-2 block">Crop aspect ratio</Label>
@@ -464,35 +472,16 @@ export default function ImageEditorPage() {
               </div>
             </section>
 
-            {/* Adjustments */}
-            <section className="space-y-2">
-              <Label className="block">Adjustments</Label>
-              {(["brightness", "contrast", "saturation"] as const).map((k) => (
-                <div key={k} className="flex items-center gap-2 text-sm">
-                  <span className="w-20 capitalize text-muted-foreground">{k}</span>
-                  <Slider
-                    value={adjustments[k]}
-                    min={0}
-                    max={200}
-                    onChange={(v) => setAdjustments((a) => ({ ...a, [k]: v }))}
-                  />
-                  <span className="w-8 text-right font-mono text-xs">{adjustments[k]}</span>
-                </div>
-              ))}
-              <Button size="sm" variant="ghost" onClick={() => setAdjustments(NEUTRAL_ADJUSTMENTS)}>
-                Reset adjustments
-              </Button>
-            </section>
-
-            {/* Resize / presets */}
+            {/* Output size */}
             <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="resize-toggle">Resize output</Label>
-                <Switch id="resize-toggle" checked={resizeEnabled} onCheckedChange={setResizeEnabled} />
-              </div>
-
-              <Select value={presetKey} onChange={(e) => applyPreset(e.target.value)}>
-                <option value="">Custom size…</option>
+              <Label htmlFor="output-size">Output size</Label>
+              <Select
+                id="output-size"
+                value={presetKey}
+                onChange={(e) => applySizeOption(e.target.value)}
+              >
+                <option value={ORIGINAL_SIZE}>Original size (no resize)</option>
+                <option value={CUSTOM_SIZE}>Custom size</option>
                 {Array.from(new Set(DIMENSION_PRESETS.map((p) => p.group))).map((group) => (
                   <optgroup key={group} label={group}>
                     {DIMENSION_PRESETS.filter((p) => p.group === group).map((p: DimensionPreset) => (
@@ -577,6 +566,26 @@ export default function ImageEditorPage() {
                   </div>
                 </>
               )}
+            </section>
+
+            {/* Adjustments */}
+            <section className="space-y-2">
+              <Label className="block">Adjustments</Label>
+              {(["brightness", "contrast", "saturation"] as const).map((k) => (
+                <div key={k} className="flex items-center gap-2 text-sm">
+                  <span className="w-20 capitalize text-muted-foreground">{k}</span>
+                  <Slider
+                    value={adjustments[k]}
+                    min={0}
+                    max={200}
+                    onChange={(v) => setAdjustments((a) => ({ ...a, [k]: v }))}
+                  />
+                  <span className="w-8 text-right font-mono text-xs">{adjustments[k]}</span>
+                </div>
+              ))}
+              <Button size="sm" variant="ghost" onClick={() => setAdjustments(NEUTRAL_ADJUSTMENTS)}>
+                Reset adjustments
+              </Button>
             </section>
 
             {/* Export options */}
