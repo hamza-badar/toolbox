@@ -36,6 +36,7 @@ import {
   loadImageFromBlob,
   renderToCanvas,
   canvasToBlob,
+  compressCanvasToTargetBytes,
   getCroppedCanvas,
   fitCanvasToTarget,
   flipImageToCanvas,
@@ -47,6 +48,8 @@ import {
 } from "@/lib/image";
 import { zipBlobs } from "@/lib/zip";
 import { FilenameField, buildFilename, sanitizeBaseName } from "@/components/shared/filename-field";
+import { TargetSizeField } from "@/components/shared/target-size-field";
+import { AlertDialog } from "@/components/shared/alert-dialog";
 import { downloadBlob, formatBytes } from "@/lib/utils";
 
 // Client-only. Cast to Partial props because react-easy-crop relies on
@@ -105,9 +108,12 @@ export default function ImageEditorPage() {
   const [presetKey, setPresetKey] = React.useState(ORIGINAL_SIZE);
   const [format, setFormat] = React.useState<ImageFormat>("png");
   const [quality, setQuality] = React.useState(0.9);
+  const [targetMode, setTargetMode] = React.useState(false);
+  const [targetKB, setTargetKB] = React.useState<number | null>(200);
   const [outName, setOutName] = React.useState("edited");
 
   const [busy, setBusy] = React.useState(false);
+  const [invalidAlert, setInvalidAlert] = React.useState(false);
   const [progress, setProgress] = React.useState<{ value: number | null; status: string } | null>(
     null
   );
@@ -115,6 +121,10 @@ export default function ImageEditorPage() {
   const active = queue.find((q) => q.id === activeId) ?? null;
   const isBatch = queue.length > 1;
   const resizeEnabled = presetKey !== ORIGINAL_SIZE;
+  const compressFormat: Extract<ImageFormat, "jpeg" | "webp"> =
+    format === "webp" ? "webp" : "jpeg";
+  const exportFormat: ImageFormat = targetMode ? compressFormat : format;
+  const invalidTarget = targetMode && (targetKB === null || targetKB < 10);
 
   // The image the <Cropper> displays, with flips baked in so crop coordinates
   // stay correct. Adjustments are previewed live via CSS filter; rotation uses
@@ -193,6 +203,10 @@ export default function ImageEditorPage() {
         setPresetKey(ORIGINAL_SIZE);
         setSizeUnit("px");
         setDpi(DEFAULT_DPI);
+        setTargetMode(false);
+        setTargetKB(
+          Math.max(20, Math.round((Math.min(...items.map((i) => i.file.size)) * 0.6) / 1024))
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load images.");
       }
@@ -260,6 +274,51 @@ export default function ImageEditorPage() {
     if (presetKey !== ORIGINAL_SIZE) setPresetKey(CUSTOM_SIZE);
   }
 
+  function renderActiveCanvas(): HTMLCanvasElement {
+    if (!active || !displayImg) throw new Error("No image loaded.");
+    const area = croppedArea ?? {
+      x: 0,
+      y: 0,
+      width: displayImg.naturalWidth,
+      height: displayImg.naturalHeight,
+    };
+    let canvas = getCroppedCanvas(displayImg, area, rotate, adjustmentsToFilter(adjustments));
+    const bg = fit === "contain" || format === "jpeg" || targetMode ? background : undefined;
+    if (resizeEnabled) {
+      const { width: targetW, height: targetH } = getTargetDimensionsPx();
+      canvas = fitCanvasToTarget(canvas, targetW, targetH, fit, bg);
+    } else if (format === "jpeg" || targetMode) {
+      // JPEG / size targeting have no alpha — flatten onto the background.
+      canvas = fitCanvasToTarget(canvas, canvas.width, canvas.height, "stretch", bg);
+    }
+    return canvas;
+  }
+
+  async function encodeCanvas(
+    canvas: HTMLCanvasElement,
+    progressValue: number | null,
+    label = "Encoding"
+  ): Promise<Blob> {
+    if (targetMode) {
+      const target = targetKB as number;
+      const { blob } = await compressCanvasToTargetBytes(canvas, target * 1024, compressFormat, {
+        onProgress: (info) => setProgress({ value: progressValue, status: `${label} · ${info}` }),
+      });
+      return blob;
+    }
+    const blob = await canvasToBlob(
+      canvas,
+      format,
+      LOSSY_FORMATS.includes(format) ? quality : undefined
+    );
+    if (blob.type !== FORMAT_MIME[format]) {
+      throw new Error(
+        `Your browser can't encode ${format.toUpperCase()}. Try PNG, JPEG or WebP instead.`
+      );
+    }
+    return blob;
+  }
+
   function buildRenderOptions(item: QueueItem, useCrop: boolean) {
     const target = resizeEnabled ? getTargetDimensionsPx() : null;
     const cropRect =
@@ -280,45 +339,23 @@ export default function ImageEditorPage() {
       targetWidth: target?.width,
       targetHeight: target?.height,
       fit,
-      background: fit === "contain" || format === "jpeg" ? background : undefined,
+      background: fit === "contain" || format === "jpeg" || targetMode ? background : undefined,
     };
   }
 
   async function exportActive() {
     if (!active || !displayImg) return;
+    if (invalidTarget) {
+      setInvalidAlert(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     setProgress({ value: null, status: "Rendering…" });
     try {
-      // Flip is already baked into displayImg; rotation + crop + adjustments are
-      // applied here to exactly match what the cropper shows.
-      const area = croppedArea ?? {
-        x: 0,
-        y: 0,
-        width: displayImg.naturalWidth,
-        height: displayImg.naturalHeight,
-      };
-      let canvas = getCroppedCanvas(displayImg, area, rotate, adjustmentsToFilter(adjustments));
-      const bg = fit === "contain" || format === "jpeg" ? background : undefined;
-      if (resizeEnabled) {
-        const { width: targetW, height: targetH } = getTargetDimensionsPx();
-        canvas = fitCanvasToTarget(canvas, targetW, targetH, fit, bg);
-      } else if (format === "jpeg") {
-        // JPEG has no alpha — flatten onto the background.
-        canvas = fitCanvasToTarget(canvas, canvas.width, canvas.height, "stretch", bg);
-      }
-      const blob = await canvasToBlob(
-        canvas,
-        format,
-        LOSSY_FORMATS.includes(format) ? quality : undefined
-      );
-      if (blob.type !== FORMAT_MIME[format]) {
-        setError(
-          `Your browser can't encode ${format.toUpperCase()}. Try PNG, JPEG or WebP instead.`
-        );
-        return;
-      }
-      downloadBlob(blob, buildFilename(outName, format, "edited"));
+      const canvas = renderActiveCanvas();
+      const blob = await encodeCanvas(canvas, null);
+      downloadBlob(blob, buildFilename(outName, exportFormat, "edited"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed.");
     } finally {
@@ -329,25 +366,26 @@ export default function ImageEditorPage() {
 
   async function exportBatch() {
     if (!queue.length) return;
+    if (invalidTarget) {
+      setInvalidAlert(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const entries = [];
       for (let i = 0; i < queue.length; i++) {
         const item = queue[i];
+        const pct = (i / queue.length) * 100;
         setProgress({
-          value: (i / queue.length) * 100,
+          value: pct,
           status: `Processing ${i + 1} of ${queue.length}…`,
         });
         // Batch can't reuse a single crop rect across differently-sized images,
         // so crop is skipped in batch — resize/fit/adjust/rotate still apply.
         const canvas = renderToCanvas(item.img, buildRenderOptions(item, false));
-        const blob = await canvasToBlob(
-          canvas,
-          format,
-          LOSSY_FORMATS.includes(format) ? quality : undefined
-        );
-        entries.push({ name: `${sanitizeBaseName(item.file.name)}.${format}`, blob });
+        const blob = await encodeCanvas(canvas, pct, item.file.name);
+        entries.push({ name: `${sanitizeBaseName(item.file.name)}.${exportFormat}`, blob });
       }
       setProgress({ value: 100, status: "Zipping…" });
       const zip = await zipBlobs(entries);
@@ -472,11 +510,11 @@ export default function ImageEditorPage() {
               </div>
             </section>
 
-            {/* Output size */}
+            {/* Dimensions */}
             <section className="space-y-3">
-              <Label htmlFor="output-size">Output size</Label>
+              <Label htmlFor="output-dimensions">Dimensions</Label>
               <Select
-                id="output-size"
+                id="output-dimensions"
                 value={presetKey}
                 onChange={(e) => applySizeOption(e.target.value)}
               >
@@ -612,19 +650,52 @@ export default function ImageEditorPage() {
                   />
                 </div>
               </div>
-              {LOSSY_FORMATS.includes(format) && (
+              {LOSSY_FORMATS.includes(format) && !targetMode && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="w-16 text-muted-foreground">Quality</span>
                   <Slider value={quality} min={0.1} max={1} step={0.01} onChange={setQuality} />
                   <span className="w-10 text-right font-mono text-xs">{Math.round(quality * 100)}%</span>
                 </div>
               )}
+              {targetMode && (format === "png" || format === "avif") && (
+                <p className="text-xs text-muted-foreground">
+                  Size targeting exports as {compressFormat.toUpperCase()} —{" "}
+                  {format.toUpperCase()} has no quality control.
+                </p>
+              )}
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-3">
+                <div>
+                  <Label htmlFor="target-mode">Limit output file size</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Compress toward a target size in KB.
+                  </p>
+                </div>
+                <Switch
+                  id="target-mode"
+                  checked={targetMode}
+                  onCheckedChange={(on) => {
+                    setTargetMode(on);
+                    if (on && (format === "png" || format === "avif")) setFormat("jpeg");
+                  }}
+                />
+              </div>
+              {targetMode && (
+                <TargetSizeField
+                  id="target-kb"
+                  label="Target file size (KB)"
+                  value={targetKB ?? 200}
+                  onChange={setTargetKB}
+                  min={10}
+                  resetKey={queue.map((q) => `${q.file.name}:${q.file.size}`).join(",")}
+                  hint="The image will be compressed toward this file size."
+                />
+              )}
             </section>
 
             <FilenameField
               value={outName}
               onChange={setOutName}
-              extension={format}
+              extension={exportFormat}
               label={isBatch ? "Current image file name" : "Output file name"}
             />
 
@@ -657,6 +728,13 @@ export default function ImageEditorPage() {
             )}
           </div>
         </div>
+      )}
+      {invalidAlert && (
+        <AlertDialog
+          title="Fix the target file size first"
+          message="Enter a target file size of at least 10 KB before exporting."
+          onClose={() => setInvalidAlert(false)}
+        />
       )}
     </ToolShell>
   );
